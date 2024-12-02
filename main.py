@@ -204,7 +204,8 @@ def show_menu_screen():
         buttons_frame.grid_rowconfigure(row_index, weight=0)  # Não expande as linhas
     for col_index in range(2):
         buttons_frame.grid_columnconfigure(col_index, weight=1)  # Expande as colunas igualmente
-
+    title = tk.Label(frame, text="CVW new project", font=("Helvetica", 14), bg="black", fg='white')
+    title.pack(pady=90)
 def show_activity_screen(ctx):
     global contexto
     contexto = ctx
@@ -376,7 +377,6 @@ def show_extrair_amostra():
     buttons_frame = tk.Frame(left_frame, bg="darkblue")
     buttons_frame.place(relx=0.5, rely=0.5, anchor="center")
     criar_botoes(buttons_frame)
-
 def mostrar_valoresQC(file_path):
     for widget in root.winfo_children():
         widget.destroy()
@@ -442,6 +442,7 @@ def mostrar_valoresQC(file_path):
     buttons_frame.place(relx=0.5, rely=0.5, anchor="center")
     criar_botoes(buttons_frame)
 
+
 def show_tableQC():
     global contexto, file_path
     if not file_path:
@@ -458,7 +459,6 @@ def show_tableQC():
     success_label = tk.Label(right_frame, text="", font=("Helvetica", 12), bg="white")
     
     def analisar_coluna():
-        
         coluna = coluna_entry.get()
         if coluna not in df.columns:
             success_label.config(text="Coluna não encontrada no arquivo CSV", fg="red")
@@ -474,8 +474,9 @@ def show_tableQC():
         else:
             success_label.config(text="Análise concluída com sucesso!", fg="green")
         
+        # Remove todos os widgets, exceto o success_label
         for widget in right_frame.winfo_children():
-            if widget != coluna_entry and widget != success_label and isinstance(widget, tk.Label):
+            if widget != success_label:
                 widget.destroy()
         
         # Frame para Treeview e Scrollbars
@@ -488,6 +489,22 @@ def show_tableQC():
             tree.column(col, anchor='center', width=150)
         for index, row in tabela.iterrows():
             tree.insert("", "end", values=list(row))
+        
+        # Cálculo dos totais
+        total_freq_absoluta = tabela['Freq. Absoluta'].sum()
+        total_freq_relativa = tabela['Freq. Relativa'].sum()
+        total_freq_percentual = tabela['Freq. Percentual (%)'].sum()
+        
+        # Inserção da linha de total
+        tree.insert("", "end", values=[
+            "Total",
+            total_freq_absoluta,
+            f"{total_freq_relativa:.2f}",
+            f"{total_freq_percentual:.2f}",
+            "--",
+            "--"
+        ])
+        
         tree.pack(side="left", fill="both", expand=True)
         
         scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
@@ -515,7 +532,8 @@ def show_tableQC():
     buttons_frame = tk.Frame(left_frame, bg="darkblue")
     buttons_frame.place(relx=0.5, rely=0.5, anchor="center")
     criar_botoes(buttons_frame)
-    
+
+
 def mostrar_tabela(file_path):
     for widget in root.winfo_children():
         widget.destroy()
@@ -581,44 +599,66 @@ def show_grafico_pizza():
         try:
             if contexto == "qualitativa" or contexto == "atividade_IIIA":
                 tabela = qualitativa(df, coluna)
-                labels = tabela['Categoria']
-                sizes = tabela['Freq. Absoluta']
-                autopct_format = '%1.1f%%'
+                labels = tabela['Categoria'].tolist()
+                sizes = tabela['Freq. Absoluta'].tolist()
             elif contexto == "quantitativa_continua" or contexto == "atividade_IIIC":
                 tabela = quantitativa_continua(df, coluna)
-                labels = tabela['Classes']
-                sizes = tabela['Freq. Absoluta']
-                autopct_format = '%1.1f%%'
+                labels = tabela['Classes'].tolist()
+                sizes = tabela['Freq. Absoluta'].tolist()
             elif contexto == "quantitativa_discreta" or contexto == "atividade_IIIB":
                 tabela = quantitativa_discreta(df, coluna)
-                labels = tabela['Values']
-                sizes = tabela['Freq. Absoluta']
-                autopct_format = '%1.1f%%'
+                labels = tabela['Values'].tolist()
+                sizes = tabela['Freq. Absoluta'].tolist()
             else:
                 status_label.config(text=f"Contexto '{contexto}' não suportado.", fg="red")
                 return
+
+            # Calcular as porcentagens
+            total = sum(sizes)
+            porcentagens = [(s / total) * 100 for s in sizes]
+
+            # Combinar labels, sizes e porcentagens em uma lista de tuplas e ordenar
+            dados = list(zip(porcentagens, labels, sizes))
+            dados.sort(reverse=True)  # Ordena em ordem decrescente de porcentagem
+
+            # Descompactar os valores ordenados
+            porcentagens, labels, sizes = zip(*dados)
+
+            # Converter para listas
+            porcentagens = list(porcentagens)
+            labels = list(labels)
+            sizes = list(sizes)
+
+            # Criar os labels da legenda com as porcentagens
+            legend_labels = [f'{l}: {p:.1f}%' for l, p in zip(labels, porcentagens)]
+
+            # Gerar as cores
             cmap = plt.get_cmap("rainbow")
             cores = cmap(np.linspace(0, 1, len(sizes)))
+
             plt.figure(figsize=(7, 7))
-            patches, texts, autotexts = plt.pie(
+
+            # Criar o gráfico de pizza sem rótulos nas fatias
+            wedges, _ = plt.pie(
                 sizes,
-                labels=labels,
-                autopct=autopct_format,
                 startangle=90,
-                colors=cores,
-                textprops={'fontsize': 8},
-                pctdistance=0.85  # Define a distância das porcentagens em relação ao centro
+                colors=cores
             )
-            # Ajusta as porcentagens para melhor legibilidade
-            for autotext in autotexts:
-                autotext.set_color('white')
-                autotext.set_fontsize(10)
             plt.title('Gráfico Circular')
             plt.axis('equal')  # Mantém o círculo
-            plt.savefig("grafico_pizza_temp.png")
+
+            # Adicionar a legenda
+            plt.legend(wedges, legend_labels, title="Legenda", loc="center left", bbox_to_anchor=(1, 0.5))
+
+            plt.tight_layout()
+            plt.savefig("grafico_pizza_temp.png", bbox_inches='tight')
             plt.close()
+
+            # Código para exibir o gráfico em Tkinter
+
             # Remove widgets de interação
             entradas_frame.destroy()
+
             # Frame para exibir o gráfico com Canvas e Scrollbar Vertical
             grafico_frame = tk.Frame(right_frame, bg="white")
             grafico_frame.pack(fill="both", expand=True, padx=20, pady=20)
@@ -633,15 +673,11 @@ def show_grafico_pizza():
             inner_frame = tk.Frame(canvas, bg="white")
             canvas.create_window((0, 0), window=inner_frame, anchor="nw")
             # Carrega a imagem do gráfico
-            try:
-                image = Image.open("grafico_pizza_temp.png")
-                photo = ImageTk.PhotoImage(image)
-                imagem_label = tk.Label(inner_frame, image=photo, bg="white")
-                imagem_label.image = photo  # Mantém uma referência
-                imagem_label.pack(padx=20, pady=20)
-            except Exception as img_e:
-                messagebox.showerror("Erro", f"Erro ao exibir a imagem do gráfico: {img_e}")
-                return
+            image = Image.open("grafico_pizza_temp.png")
+            photo = ImageTk.PhotoImage(image)
+            imagem_label = tk.Label(inner_frame, image=photo, bg="white")
+            imagem_label.image = photo  # Mantém uma referência
+            imagem_label.pack(padx=20, pady=20)
             # Atualiza a região de rolagem para o tamanho do conteúdo
             inner_frame.update_idletasks()
             canvas.configure(scrollregion=canvas.bbox("all"))
@@ -666,6 +702,7 @@ def show_grafico_pizza():
         criar_botoes(buttons_frame)
     else:
         print("A função 'criar_botoes' não está definida.")
+
 def show_grafico_linhas():
     global file_path
     for widget in root.winfo_children():
@@ -783,6 +820,7 @@ def show_grafico_linhas():
     buttons_frame.place(relx=0.5, rely=0.5, anchor="center")
     # Cria os botões usando a função criar_botoes
     criar_botoes(buttons_frame)
+
 def show_quantitativa_discreta():
     global contexto, file_path
     if not file_path:
@@ -790,17 +828,14 @@ def show_quantitativa_discreta():
         return
     for widget in root.winfo_children():
         widget.destroy()
-    # Frame Esquerdo (Botões)
     left_frame = tk.Frame(root, bg="darkblue", width=root.winfo_screenwidth() // 3)
     left_frame.pack(side="left", fill="y")
-    # Frame Direito (Interação e Tabela)
     right_frame = tk.Frame(root, bg="white")
     right_frame.pack(side="right", expand=True, fill="both")
-    # Carrega o DataFrame
     df = pd.read_csv(file_path)
-    # Entry para Nome da Coluna
     coluna_entry = tk.Entry(right_frame, font=("Helvetica", 12))
     success_label = tk.Label(right_frame, text="", font=("Helvetica", 12), bg="white")
+    
     def analisar_coluna():
         coluna = coluna_entry.get()
         if coluna not in df.columns:
@@ -810,40 +845,51 @@ def show_quantitativa_discreta():
         if not pd.api.types.is_numeric_dtype(df_coluna):
             success_label.config(text="A coluna selecionada não é numérica", fg="red")
             return
-        # Chama a função quantitativa_discreta
         tabela = quantitativa_discreta(df, coluna)
-        # Remove widgets anteriores no right_frame
+        if tabela['Freq. Absoluta'].sum() != len(df_coluna):
+            success_label.config(text="Aviso: A soma das frequências não corresponde ao total de dados.", fg="orange")
+        else:
+            success_label.config(text="Análise concluída com sucesso!", fg="green")
+        
         for widget in right_frame.winfo_children():
-            widget.destroy()
-        # Exibe o título novamente
-        titulo_label = tk.Label(
-            right_frame,
-            text=f"Título do arquivo: {os.path.basename(file_path)}",
-            font=("Helvetica", 16, "bold"),
-            bg="white"
-        )
-        titulo_label.pack(pady=10)
-        # Criação do Treeview
-        tree = ttk.Treeview(right_frame, columns=list(tabela.columns), show='headings')
-        # Definição das Colunas
+            if widget != success_label:
+                widget.destroy()
+        
+        tree_frame = tk.Frame(right_frame)
+        tree_frame.pack(pady=10, padx=10, fill='both', expand=True)
+        
+        tree = ttk.Treeview(tree_frame, columns=list(tabela.columns), show='headings')
         for col in tabela.columns:
             tree.heading(col, text=col)
             tree.column(col, anchor='center', width=150)
-        # Inserção dos Dados
         for index, row in tabela.iterrows():
             tree.insert("", "end", values=list(row))
-        # Adiciona o Treeview ao frame
-        tree.pack(pady=10, padx=10, fill='both', expand=True)
-        # Configuração das Scrollbars
-        scrollbar_y = ttk.Scrollbar(right_frame, orient="vertical", command=tree.yview)
+        
+        total_freq_absoluta = tabela['Freq. Absoluta'].sum()
+        total_freq_relativa = tabela['Freq. Relativa'].sum()
+        total_freq_percentual = tabela['Freq. Percentual (%)'].sum()
+        
+        tree.insert("", "end", values=[
+            "Total",
+            total_freq_absoluta,
+            f"{total_freq_relativa:.2f}",
+            f"{total_freq_percentual:.2f}",
+            "--",
+            "--"
+        ])
+        
+        tree.pack(side="left", fill="both", expand=True)
+        
+        scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=scrollbar_y.set)
         scrollbar_y.pack(side="right", fill="y")
+        
         scrollbar_x = ttk.Scrollbar(right_frame, orient="horizontal", command=tree.xview)
         tree.configure(xscrollcommand=scrollbar_x.set)
-        scrollbar_x.pack(side="bottom", fill="x")
-        success_label.config(text="Análise concluída com sucesso!", fg="green")
+        scrollbar_x.pack(fill="x")
+        
         success_label.pack(pady=10)
-    # Título do Arquivo
+    
     titulo_label = tk.Label(
         right_frame,
         text=f"Título do arquivo: {os.path.basename(file_path)}",
@@ -851,19 +897,15 @@ def show_quantitativa_discreta():
         bg="white"
     )
     titulo_label.pack(pady=10)
-    # Label e Entry para Nome da Coluna
     tk.Label(right_frame, text="Nome da coluna:", font=("Helvetica", 12), bg="white").pack(pady=5)
     coluna_entry.pack(pady=5)
-    # Botão para Analisar
     btn_analisar = create_formatted_buttonIII(right_frame, "Mostrar Tabela", analisar_coluna)
     btn_analisar.pack(pady=10)
-    # Label de Sucesso ou Erro
     success_label.pack(pady=5)
-    # Frame para Botões Esquerdo
     buttons_frame = tk.Frame(left_frame, bg="darkblue")
     buttons_frame.place(relx=0.5, rely=0.5, anchor="center")
-    # Criação dos Botões
     criar_botoes(buttons_frame)
+
 def show_qualitativa():
     global contexto, file_path
     if not file_path:
@@ -878,6 +920,7 @@ def show_qualitativa():
     df = pd.read_csv(file_path)
     coluna_entry = tk.Entry(right_frame, font=("Helvetica", 12))
     success_label = tk.Label(right_frame, text="", font=("Helvetica", 12), bg="white")
+    
     def analisar_coluna():
         coluna = coluna_entry.get()
         if coluna not in df.columns:
@@ -886,24 +929,53 @@ def show_qualitativa():
         df_coluna = df[coluna].dropna()
         if pd.api.types.is_numeric_dtype(df_coluna):
             df_coluna = df_coluna.astype(str)
+        
         tabela = qualitativa(df, coluna)
+        
+        # Calcula os totais das colunas numéricas
+        total_freq_absoluta = tabela['Freq. Absoluta'].sum()
+        total_freq_relativa = tabela['Freq. Relativa'].sum()
+        total_freq_percentual = tabela['Freq. Percentual (%)'].sum()
+        
+        # Remove todos os widgets, exceto o success_label
         for widget in right_frame.winfo_children():
-            widget.destroy()
-        tree = ttk.Treeview(right_frame, columns=list(tabela.columns), show='headings')
+            if widget != success_label:
+                widget.destroy()
+        
+        # Frame para Treeview e Scrollbars
+        tree_frame = tk.Frame(right_frame)
+        tree_frame.pack(pady=10, padx=10, fill='both', expand=True)
+        
+        tree = ttk.Treeview(tree_frame, columns=list(tabela.columns), show='headings')
         for col in tabela.columns:
             tree.heading(col, text=col)
             tree.column(col, anchor='center', width=120)
         for index, row in tabela.iterrows():
             tree.insert("", "end", values=list(row))
-        tree.pack(pady=10, padx=10, fill='both', expand=True)
-        scrollbar_y = ttk.Scrollbar(tree, orient="vertical", command=tree.yview)
+        
+        # Inserção da linha de total
+        tree.insert("", "end", values=[
+            "Total",
+            total_freq_absoluta,
+            f"{total_freq_relativa:.2f}",
+            f"{total_freq_percentual:.2f}",
+            "--",
+            "--"
+        ])
+        
+        tree.pack(side="left", fill="both", expand=True)
+        
+        scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=scrollbar_y.set)
         scrollbar_y.pack(side="right", fill="y")
-        scrollbar_x = ttk.Scrollbar(tree, orient="horizontal", command=tree.xview)
+        
+        scrollbar_x = ttk.Scrollbar(right_frame, orient="horizontal", command=tree.xview)
         tree.configure(xscrollcommand=scrollbar_x.set)
-        scrollbar_x.pack(side="bottom", fill="x")
+        scrollbar_x.pack(fill="x")
+        
         success_label.config(text="Análise concluída com sucesso!", fg="green")
         success_label.pack(pady=10)
+    
     titulo_label = tk.Label(
         right_frame,
         text=f"Título do arquivo: {os.path.basename(file_path)}",
@@ -918,7 +990,8 @@ def show_qualitativa():
     success_label.pack(pady=5)
     buttons_frame = tk.Frame(left_frame, bg="darkblue")
     buttons_frame.place(relx=0.5, rely=0.5, anchor="center")
-    criar_botoes(buttons_frame)     
+    criar_botoes(buttons_frame)
+
 def show_grafico_barras(): 
     global contexto, file_path, root
     if not file_path:
@@ -1168,6 +1241,7 @@ def atvIIIC_arquivoI():
 
 
 root = tk.Tk()
-root.attributes('-fullscreen', True)
+root.title("CVW - Análise Estatística")  # Opcional: define um título para a janela
+root.state('zoomed') # Maximiza a janela principal
 show_initial_screen()
 root.mainloop()
